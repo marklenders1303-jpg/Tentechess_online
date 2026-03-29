@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Ajedrez 3D - Edición Premium (Multijugador Online)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+        
+        /* Pantallas de Carga y Menú Principal */
+        #ui-loading, #ui-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 25, 35, 0.95); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; transition: opacity 0.5s; backdrop-filter: blur(5px); }
+        #ui-loading h2 { margin: 0 0 10px 0; font-weight: 300; }
+        #ui-loading-error { color: #ff5555; font-size: 16px; margin-top: 15px; text-align: center; max-width: 80%; }
+        
+        #ui-menu h1 { font-size: 60px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 4px; color: #ffaa00; text-shadow: 0 0 20px rgba(255,170,0,0.5); }
+        #ui-menu p { font-size: 20px; color: #aaa; margin-bottom: 40px; }
+        .menu-opcion { display: flex; flex-direction: column; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 30px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); width: 350px; }
+        .menu-opcion select { padding: 10px; font-size: 18px; border-radius: 5px; width: 100%; background: #333; color: white; border: 1px solid #555; outline: none; }
+        .btn-gigante { margin-top: 20px; padding: 15px 50px; font-size: 24px; font-weight: bold; cursor: pointer; background: #ffaa00; color: #000; border: none; border-radius: 50px; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; width: 100%; }
+        .btn-gigante:hover { background: #fff; transform: scale(1.05); box-shadow: 0 10px 20px rgba(255,255,255,0.2); }
+
+        /* Interfaz de Juego (UI) */
+        .btn-control { color: white; background: rgba(0,0,0,0.7); padding: 10px 15px; font-size: 16px; border-radius: 8px; border: 2px solid #aaa; cursor: pointer; transition: all 0.2s; font-weight: bold; }
+        .btn-control:hover { background: rgba(255,255,255,0.2); border-color: white; }
+        
+        #panel-izquierdo { position: absolute; top: 20px; left: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 5; pointer-events: none; }
+        #ui-turno { color: white; background: rgba(0,0,0,0.7); padding: 12px 24px; font-size: 20px; border-radius: 8px; border: 2px solid white; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s; text-align: center; }
+        .reloj { color: white; background: rgba(0,0,0,0.7); padding: 10px 20px; font-size: 28px; font-family: 'Courier New', Courier, monospace; font-weight: bold; border-radius: 8px; border: 2px solid #555; text-align: center; transition: all 0.3s;}
+        #reloj-blanco { border-color: #fff; }
+        #reloj-negro { border-color: #444; color: #aaa; }
+        #ui-jaque { color: #ff4444; background: rgba(20,0,0,0.8); padding: 10px 24px; font-size: 22px; font-weight: bold; border-radius: 8px; border: 2px solid #ff4444; opacity: 0; transition: opacity 0.3s; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+
+        /* Controles Superiores Derecha */
+        #controles-top { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
+        
+        /* Panel de Personalización */
+        #panel-ajustes { display: none; position: absolute; top: 70px; right: 20px; background: rgba(0,0,0,0.85); border: 2px solid #555; border-radius: 10px; padding: 20px; color: white; z-index: 15; flex-direction: column; gap: 15px; width: 220px; }
+        .ajuste-item { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .ajuste-item input[type="color"] { width: 40px; height: 30px; border: none; border-radius: 5px; cursor: pointer; background: none; }
+        
+        /* Historial de Movimientos */
+        #panel-historial { position: absolute; top: 80px; right: 20px; background: rgba(0,0,0,0.7); border: 2px solid #555; border-radius: 8px; width: 220px; height: 50vh; display: flex; flex-direction: column; z-index: 5; }
+        #historial-header { padding: 10px; background: rgba(255,255,255,0.1); font-weight: bold; text-align: center; color: #ffaa00; border-bottom: 1px solid #555; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+        #historial-lista { flex: 1; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 16px; color: #ddd; display: flex; flex-direction: column; gap: 5px; }
+        .movimiento-fila { display: flex; justify-content: space-between; padding: 3px 5px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .movimiento-fila span { width: 45%; text-align: left; }
+        .movimiento-num { color: #888; width: 10%; text-align: right; margin-right: 5px; }
+
+        /* Pantallas Auxiliares */
+        #ui-promocion { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); flex-direction: column; align-items: center; justify-content: center; z-index: 30; }
+        #ui-promocion h2 { color: white; font-size: 32px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+        .promocion-opciones { display: flex; gap: 20px; }
+        .btn-promo { width: 80px; height: 80px; font-size: 50px; background: white; border: 4px solid #aaa; border-radius: 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+        .btn-promo:hover { transform: scale(1.1); border-color: #ffaa00; background: #eee; }
+
+        #ui-gameover { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); color: white; flex-direction: column; align-items: center; justify-content: center; z-index: 60; backdrop-filter: blur(4px); }
+        #ui-gameover h1 { font-size: 56px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
+        #ui-gameover h2 { font-size: 24px; margin: 0 0 40px 0; color: #ffaa00; font-weight: 300; }
+    </style>
+</head>
+<body>
+    <div id="ui-loading">
+        <h2>Cargando Motor de Ajedrez...</h2>
+        <div id="ui-loading-error"></div>
+    </div>
+
+    <div id="ui-menu" style="display: none;">
+        <h1>Ajedrez 3D</h1>
+        <p>Configura tu partida</p>
+        <div class="menu-opcion">
+            <select id="select-modo" onchange="actualizarMenu()">
+                <option value="local">2 Jugadores (Mismo PC)</option>
+                <option value="ia">1 Jugador (vs Ordenador)</option>
+                <option value="online">Multijugador Online</option>
+            </select>
+            
+            <select id="select-dificultad" style="display: none;">
+                <option value="facil">Dificultad: Fácil</option>
+                <option value="medio" selected>Dificultad: Medio</option>
+                <option value="dificil">Dificultad: Difícil</option>
+            </select>
+
+            <div id="panel-online" style="display: none; width: 100%; text-align: center; margin-top: 10px;">
+                <button class="btn-control" style="width: 100%; margin-bottom: 10px; background: #2a4b6c;" onclick="crearSalaOnline()">Crear Sala (Blancas)</button>
+                <p id="texto-mi-id" style="font-size: 14px; color: #00ff00; margin: 5px 0; display: none;">Tu código: <b id="mi-codigo-sala" style="font-size: 18px;">Cargando...</b></p>
+                
+                <hr style="border-color: #555; width: 80%; margin: 15px auto;">
+                
+                <input type="text" id="input-sala-amigo" placeholder="Pega código del amigo..." style="padding: 10px; font-size: 14px; width: 88%; border-radius: 5px; border: 1px solid #555; background: #222; color: white; margin-bottom: 10px; text-align: center; text-transform: uppercase;">
+                <button class="btn-control" style="width: 100%; background: #6c2a2a;" onclick="unirseSalaOnline()">Unirse a Sala (Negras)</button>
+                <p id="estado-conexion" style="font-size: 14px; color: #ffaa00; margin-top: 10px; font-weight: bold;"></p>
+            </div>
+            
+            <button id="btn-jugar-local" class="btn-gigante" onclick="empezarJuego()">Jugar Local</button>
+        </div>
+    </div>
+    
+    <div id="panel-izquierdo">
+        <div id="ui-turno">Turno: Blanco</div>
+        <div id="reloj-negro" class="reloj">10:00</div>
+        <div id="reloj-blanco" class="reloj">10:00</div>
+        <div id="ui-jaque">¡JAQUE!</div>
+    </div>
+    
+    <div id="controles-top">
+        <button id="btn-sonido" class="btn-control" onclick="toggleSonido()">🔇 Sonido</button>
+        <button id="btn-ajustes" class="btn-control" onclick="toggleAjustes()">⚙️</button>
+    </div>
+
+    <div id="panel-ajustes">
+        <h3 style="margin: 0; text-align: center; color: #ffaa00;">Personalización</h3>
+        <div class="ajuste-item">
+            <label>Color Fondo:</label>
+            <input type="color" id="color-fondo" value="#1a2b3c" oninput="aplicarColores()">
+        </div>
+        <div class="ajuste-item">
+            <label>Casillas Blancas:</label>
+            <input type="color" id="color-blancas" value="#dddddd" oninput="aplicarColores()">
+        </div>
+        <div class="ajuste-item">
+            <label>Casillas Negras:</label>
+            <input type="color" id="color-negras" value="#333333" oninput="aplicarColores()">
+        </div>
+        <button class="btn-control" style="width: 100%; margin-top: 10px;" onclick="rendirse()">Rendirse / Menú</button>
+    </div>
+
+    <div id="panel-historial">
+        <div id="historial-header">Historial de Jugadas</div>
+        <div id="historial-lista"></div>
+    </div>
+
+    <div id="ui-promocion">
+        <h2>Elige pieza para coronar</h2>
+        <div class="promocion-opciones">
+            <button class="btn-promo" onclick="ejecutarPromocion('reina')">♕</button>
+            <button class="btn-promo" onclick="ejecutarPromocion('torre')">♖</button>
+            <button class="btn-promo" onclick="ejecutarPromocion('alfil')">♗</button>
+            <button class="btn-promo" onclick="ejecutarPromocion('caballo')">♘</button>
+        </div>
+    </div>
+    
+    <div id="ui-gameover">
+        <h1 id="texto-ganador">¡Ganan las Blancas!</h1>
+        <h2 id="texto-motivo">Por Jaque Mate</h2>
+        <button class="btn-gigante" style="width: auto;" onclick="volverAlMenu()">Volver al Menú</button>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <script>
+        // --- 0. SISTEMAS DE AUDIO ---
+        const sndSeleccion = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Move.ogg'); sndSeleccion.volume = 0.4; 
+        const sndMover = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Move.ogg');
+        const sndComer = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Capture.ogg');
+        const sndVictoria = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Victory.ogg');
+        
+        let sonidoActivado = false;
+
+        function toggleSonido() {
+            sonidoActivado = !sonidoActivado;
+            const btn = document.getElementById('btn-sonido');
+            if (sonidoActivado) {
+                btn.innerHTML = '🔊 Sonido'; btn.style.borderColor = '#00ff00';
+                const testAudio = sndSeleccion.cloneNode(); testAudio.volume = 0; testAudio.play().catch(() => {}); 
+            } else {
+                btn.innerHTML = '🔇 Sonido'; btn.style.borderColor = '#aaa';
+            }
+        }
+
+        function playAudio(audioObj) {
+            if (sonidoActivado) {
+                const clon = audioObj.cloneNode(); clon.volume = audioObj.volume; clon.play().catch(e => console.warn(e));
+            }
+        }
+
+        // --- 1. VARIABLES GLOBALES DE PARTIDA ---
+        let iaActivada = false;
+        let dificultadIA = 'medio';
+        const TIEMPO_INICIAL = 600; 
+        let tiempoBlanco = TIEMPO_INICIAL, tiempoNegro = TIEMPO_INICIAL;
+        let estadoPartida = 'menu'; 
+        let partidaIniciada = false; 
+        let ultimoFrameReloj = Date.now();
+        
+        let turnoActual = 'blanco';
+        let animando = false; 
+        let ultimoMovimiento = null; 
+        let peonPromocionando = null; 
+        let piezaSeleccionada = null;
+
+        let historialJugadas = [];
+        let numTurnoGlobal = 1;
+
+        // --- VARIABLES MULTIJUGADOR ONLINE ---
+        let peer = null;
+        let conexionOnline = null;
+        let miColorOnline = 'blanco';
+
+        const valorPiezas = {
+            'peon': 1, 'caballo': 3, 'alfil': 3, 'torre': 5, 'reina': 9, 'rey': 1000
+        };
+
+        // --- 2. CONFIGURACIÓN DEL MOTOR 3D ---
+        const escena = new THREE.Scene();
+        escena.background = new THREE.Color(0x1a2b3c); 
+        const camara = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camara.position.set(0, 14, 16); camara.lookAt(0, 0, 0);
+
+        const renderizador = new THREE.WebGLRenderer({ antialias: true });
+        renderizador.setSize(window.innerWidth, window.innerHeight);
+        renderizador.shadowMap.enabled = true; renderizador.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderizador.domElement);
+        
+        const controles = new THREE.OrbitControls(camara, renderizador.domElement);
+        controles.enableDamping = true; controles.maxPolarAngle = Math.PI / 2 - 0.1; 
+
+        escena.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const luzPrincipal = new THREE.DirectionalLight(0xffffff, 0.8);
+        luzPrincipal.position.set(10, 20, 10); luzPrincipal.castShadow = true;
+        luzPrincipal.shadow.camera.left = -10; luzPrincipal.shadow.camera.right = 10;
+        luzPrincipal.shadow.camera.top = 10; luzPrincipal.shadow.camera.bottom = -10;
+        escena.add(luzPrincipal);
+
+        const materialBlanco = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.8, metalness: 0.1 });
+        const materialNegro = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8, metalness: 0.1 });
+
+        function crearTablero() {
+            const tamanoCasilla = 1;
+            for (let fila = 0; fila < 8; fila++) {
+                for (let col = 0; col < 8; col++) {
+                    const esBlanca = (fila + col) % 2 === 0;
+                    const casilla = new THREE.Mesh(new THREE.BoxGeometry(tamanoCasilla, 0.2, tamanoCasilla), esBlanca ? materialBlanco : materialNegro);
+                    casilla.position.set(col - 3.5, 0, fila - 3.5);
+                    casilla.receiveShadow = true;
+                    casilla.userData = { esCasilla: true, gridX: col, gridZ: fila, esBlanca: esBlanca }; 
+                    escena.add(casilla);
+                }
+            }
+        }
+        crearTablero();
+
+        // --- 3. PERSONALIZACIÓN ---
+        window.toggleAjustes = function() {
+            const panel = document.getElementById('panel-ajustes');
+            panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        window.aplicarColores = function() {
+            escena.background.set(document.getElementById('color-fondo').value);
+            materialBlanco.color.set(document.getElementById('color-blancas').value);
+            materialNegro.color.set(document.getElementById('color-negras').value);
+        }
+
+        // --- 4. GESTOR DE MODELOS 3D ---
+        const gltfLoader = new THREE.GLTFLoader();
+        const modelosOriginales = { blanco: {}, negro: {} };
+        const archivosACargar = [
+            { tipo: 'peon', color: 'blanco', url: 'modelos/peon_blanco.glb' }, { tipo: 'peon', color: 'negro', url: 'modelos/peon_negro.glb' },
+            { tipo: 'torre', color: 'blanco', url: 'modelos/torre_blanca.glb' }, { tipo: 'torre', color: 'negro', url: 'modelos/torre_negra.glb' },
+            { tipo: 'caballo', color: 'blanco', url: 'modelos/caballo_blanco.glb' }, { tipo: 'caballo', color: 'negro', url: 'modelos/caballo_negro.glb' },
+            { tipo: 'alfil', color: 'blanco', url: 'modelos/alfil_blanco.glb' }, { tipo: 'alfil', color: 'negro', url: 'modelos/alfil_negro.glb' },
+            { tipo: 'reina', color: 'blanco', url: 'modelos/reina_blanca.glb' }, { tipo: 'reina', color: 'negro', url: 'modelos/reina_negra.glb' },
+            { tipo: 'rey', color: 'blanco', url: 'modelos/rey_blanco.glb' }, { tipo: 'rey', color: 'negro', url: 'modelos/rey_negro.glb' } 
+        ];
+
+        function cargarModeloAsync(item) {
+            return new Promise((resolve, reject) => {
+                gltfLoader.load(item.url, (gltf) => {
+                    const modelo = gltf.scene;
+                    modelo.traverse((hijo) => {
+                        if (hijo.isMesh) {
+                            hijo.material = new THREE.MeshStandardMaterial({ color: item.color === 'blanco' ? 0xffffff : 0x222222, roughness: 0.5, metalness: 0.2 });
+                            hijo.castShadow = true; hijo.receiveShadow = true;
+                        }
+                    });
+                    const box = new THREE.Box3().setFromObject(modelo); const center = box.getCenter(new THREE.Vector3());
+                    modelo.position.sub(center); modelo.position.y = (box.max.y - box.min.y) / 2; 
+                    modelosOriginales[item.color][item.tipo] = modelo;
+                    resolve();
+                }, undefined, (error) => {
+                    document.getElementById('ui-loading-error').innerHTML += `Falta el archivo: <b>${item.url}</b><br>`;
+                    reject(new Error(`Fallo al cargar ${item.url}`));
+                });
+            });
+        }
+
+        async function inicializarMotor() {
+            try {
+                await Promise.all(archivosACargar.map(cargarModeloAsync));
+                document.getElementById('ui-loading').style.display = 'none';
+                document.getElementById('ui-menu').style.display = 'flex';
+                configurarTableroInicial(); 
+            } catch (error) { document.getElementById('ui-loading').style.backgroundColor = 'rgba(100, 0, 0, 0.9)'; }
+        }
+
+        function colocarPiezaModelada(tipo, color, x, z) {
+            const plantilla = modelosOriginales[color][tipo];
+            if (plantilla) {
+                const nuevaPieza = plantilla.clone();
+                nuevaPieza.traverse((hijo) => { if (hijo.isMesh) hijo.material = hijo.material.clone(); });
+                nuevaPieza.scale.set(6.5, 6.5, 6.5);
+                nuevaPieza.position.set(x - 3.5, 0.11, z - 3.5); 
+                nuevaPieza.userData = { esPieza: true, color: color, tipo: tipo, gridX: x, gridZ: z, haMovido: false };
+                escena.add(nuevaPieza);
+                return nuevaPieza;
+            }
+            return null;
+        }
+
+        function limpiarPiezas() {
+            for (let i = escena.children.length - 1; i >= 0; i--) {
+                const obj = escena.children[i];
+                if (obj.userData && obj.userData.esPieza) escena.remove(obj);
+            }
+        }
+
+        function configurarTableroInicial() {
+            limpiarPiezas();
+            const ordenPiezas = ['torre', 'caballo', 'alfil', 'reina', 'rey', 'alfil', 'caballo', 'torre'];
+            for (let i = 0; i < 8; i++) {
+                colocarPiezaModelada(ordenPiezas[i], 'negro', i, 0);
+                colocarPiezaModelada('peon', 'negro', i, 1);
+                colocarPiezaModelada('peon', 'blanco', i, 6);
+                colocarPiezaModelada(ordenPiezas[i], 'blanco', i, 7);
+            }
+        }
+
+        inicializarMotor();
+
+        // --- 5. LÓGICA DE MENÚ Y ESTADO ---
+        window.actualizarMenu = function() {
+            const modo = document.getElementById('select-modo').value;
+            document.getElementById('select-dificultad').style.display = modo === 'ia' ? 'block' : 'none';
+            document.getElementById('panel-online').style.display = modo === 'online' ? 'block' : 'none';
+            document.getElementById('btn-jugar-local').style.display = modo === 'online' ? 'none' : 'block';
+        }
+
+        // --- LÓGICA DE CONEXIÓN ONLINE (PEERJS) ---
+        window.crearSalaOnline = function() {
+            document.getElementById('estado-conexion').innerText = "Conectando al servidor...";
+            const idSala = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+            peer = new Peer(idSala); 
+
+            peer.on('open', function(id) {
+                document.getElementById('estado-conexion').innerText = "¡Sala creada! Pásale este código a tu amigo:";
+                document.getElementById('texto-mi-id').style.display = 'block';
+                document.getElementById('mi-codigo-sala').innerText = id;
+                miColorOnline = 'blanco';
+            });
+
+            peer.on('connection', function(conn) {
+                conexionOnline = conn;
+                prepararConexionOnline();
+            });
+
+            peer.on('error', function(err) {
+                document.getElementById('estado-conexion').innerText = "Error de red. Inténtalo de nuevo.";
+            });
+        }
+
+        window.unirseSalaOnline = function() {
+            const idAmigo = document.getElementById('input-sala-amigo').value.toUpperCase().trim();
+            if (!idAmigo) { alert("¡Oye! Tienes que poner el código de la sala de tu amigo."); return; }
+
+            document.getElementById('estado-conexion').innerText = "Buscando la sala de tu amigo...";
+            peer = new Peer(); 
+
+            peer.on('open', function() {
+                conexionOnline = peer.connect(idAmigo);
+                miColorOnline = 'negro';
+                prepararConexionOnline();
+            });
+
+            peer.on('error', function(err) {
+                document.getElementById('estado-conexion').innerText = "No se ha encontrado la sala. Revisa el código.";
+            });
+        }
+
+        function prepararConexionOnline() {
+            conexionOnline.on('open', function() {
+                document.getElementById('estado-conexion').innerText = "¡Conectado! Preparando el tablero...";
+                setTimeout(iniciarPartidaOnline, 1000);
+            });
+
+            conexionOnline.on('data', function(datos) {
+                if (datos.tipo === 'movimiento') {
+                    const pieza = obtenerPiezaEn(datos.ox, datos.oz);
+                    let piezaDestino = datos.esCapturaAlPaso ? null : obtenerPiezaEn(datos.dx, datos.dz);
+                    let torreEnroque = null;
+                    if (datos.esEnroque) torreEnroque = obtenerPiezaEn(datos.dx > datos.ox ? 7 : 0, datos.oz);
+                    
+                    ejecutarMovimiento(pieza, datos.dx, datos.dz, piezaDestino, datos.esCapturaAlPaso, datos.esEnroque, torreEnroque, datos.torreDestX);
+                } else if (datos.tipo === 'promocion') {
+                    peonPromocionando = obtenerPiezaEn(datos.ox, datos.oz);
+                    window.ejecutarPromocion(datos.nuevoTipo, true);
+                } else if (datos.tipo === 'rendicion') {
+                    finalizarJuego(miColorOnline, "El oponente se ha rendido");
+                }
+            });
+        }
+
+        function iniciarPartidaOnline() {
+            iaActivada = false;
+            document.getElementById('ui-menu').style.display = 'none';
+            estadoPartida = 'jugando';
+
+            configurarTableroInicial();
+            turnoActual = 'blanco';
+            tiempoBlanco = TIEMPO_INICIAL; tiempoNegro = TIEMPO_INICIAL;
+            partidaIniciada = false; ultimoMovimiento = null;
+            historialJugadas = []; numTurnoGlobal = 1;
+            renderizarHistorial();
+            actualizarUI();
+
+            if (miColorOnline === 'negro') camara.position.set(0, 15, -12);
+            else camara.position.set(0, 15, 12);
+        }
+
+        window.empezarJuego = function() {
+            const modo = document.getElementById('select-modo').value;
+            iaActivada = (modo === 'ia');
+            dificultadIA = document.getElementById('select-dificultad').value;
+            conexionOnline = null; 
+            
+            document.getElementById('ui-menu').style.display = 'none';
+            estadoPartida = 'jugando';
+            
+            configurarTableroInicial();
+            turnoActual = 'blanco';
+            tiempoBlanco = TIEMPO_INICIAL; tiempoNegro = TIEMPO_INICIAL;
+            partidaIniciada = false; ultimoMovimiento = null;
+            historialJugadas = []; numTurnoGlobal = 1;
+            renderizarHistorial();
+            actualizarUI();
+            
+            camara.position.set(0, 15, 12);
+        }
+
+        window.volverAlMenu = function() {
+            if (conexionOnline) { conexionOnline.close(); conexionOnline = null; }
+            if (peer) { peer.destroy(); peer = null; }
+            
+            document.getElementById('estado-conexion').innerText = "";
+            document.getElementById('texto-mi-id').style.display = 'none';
+            estadoPartida = 'menu';
+            document.getElementById('ui-gameover').style.display = 'none';
+            document.getElementById('ui-menu').style.display = 'flex';
+            document.getElementById('panel-ajustes').style.display = 'none';
+        }
+
+        window.rendirse = function() {
+            if (estadoPartida !== 'jugando') return;
+            if (conexionOnline) conexionOnline.send({ tipo: 'rendicion' });
+            finalizarJuego(turnoActual === 'blanco' ? 'negro' : 'blanco', "Rendición");
+            document.getElementById('panel-ajustes').style.display = 'none';
+        }
+
+        // --- 6. HISTORIAL DE MOVIMIENTOS ---
+        const LETRAS_COLUMNA = ['a','b','c','d','e','f','g','h'];
+        function coordAjedrez(x, z) { return LETRAS_COLUMNA[x] + (8 - z); }
+
+        function registrarMovimiento(pieza, origenX, origenZ, destX, destZ, esCaptura, esEnroque, tipoPromocion = null) {
+            let texto = "";
+            const inicialPieza = { 'rey': 'R', 'reina': 'D', 'torre': 'T', 'alfil': 'A', 'caballo': 'C', 'peon': '' };
+            
+            if (esEnroque) {
+                texto = (destX > origenX) ? "O-O" : "O-O-O";
+            } else {
+                let letra = inicialPieza[pieza.userData.tipo];
+                if (pieza.userData.tipo === 'peon' && esCaptura) letra = LETRAS_COLUMNA[origenX];
+                texto = letra + (esCaptura ? "x" : "") + coordAjedrez(destX, destZ);
+                if (tipoPromocion) texto += "=" + inicialPieza[tipoPromocion];
+            }
+
+            if (pieza.userData.color === 'blanco') {
+                historialJugadas.push({ num: numTurnoGlobal, blancas: texto, negras: "" });
+            } else {
+                if(historialJugadas.length > 0) historialJugadas[historialJugadas.length - 1].negras = texto;
+                numTurnoGlobal++;
+            }
+            renderizarHistorial();
+        }
+
+        function anadirJaqueAlHistorial(esMate) {
+            if(historialJugadas.length === 0) return;
+            let ultimo = historialJugadas[historialJugadas.length - 1];
+            if (turnoActual === 'negro') ultimo.blancas += esMate ? "#" : "+"; 
+            else ultimo.negras += esMate ? "#" : "+";
+            renderizarHistorial();
+        }
+
+        function renderizarHistorial() {
+            const contenedor = document.getElementById('historial-lista');
+            contenedor.innerHTML = "";
+            historialJugadas.forEach(turno => {
+                contenedor.innerHTML += `<div class="movimiento-fila"><span class="movimiento-num">${turno.num}.</span><span>${turno.blancas}</span><span>${turno.negras}</span></div>`;
+            });
+            contenedor.scrollTop = contenedor.scrollHeight;
+        }
+
+        function actualizarUI() {
+            const uiTurno = document.getElementById('ui-turno');
+            uiTurno.innerHTML = 'Turno: ' + (turnoActual === 'blanco' ? 'Blancas' : 'Negras');
+            uiTurno.style.borderColor = turnoActual === 'blanco' ? '#ffffff' : '#444444';
+            uiTurno.style.color = turnoActual === 'blanco' ? '#ffffff' : '#aaaaaa';
+            
+            document.getElementById('reloj-blanco').style.borderColor = turnoActual === 'blanco' ? '#ffffff' : '#444444';
+            document.getElementById('reloj-blanco').style.color = turnoActual === 'blanco' ? '#ffffff' : '#aaaaaa';
+            document.getElementById('reloj-negro').style.borderColor = turnoActual === 'negro' ? '#ffffff' : '#444444';
+            document.getElementById('reloj-negro').style.color = turnoActual === 'negro' ? '#ffffff' : '#aaaaaa';
+
+            document.getElementById('ui-jaque').style.opacity = estaEnJaque(turnoActual) ? '1' : '0';
+        }
+
+        function cambiarTurno() {
+            turnoActual = turnoActual === 'blanco' ? 'negro' : 'blanco';
+            
+            if (hayJaqueMate(turnoActual)) {
+                anadirJaqueAlHistorial(true); actualizarUI();
+                finalizarJuego(turnoActual === 'blanco' ? 'negro' : 'blanco', "Por Jaque Mate");
+            } else if (estaEnJaque(turnoActual)) {
+                anadirJaqueAlHistorial(false); actualizarUI();
+                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') setTimeout(ejecutarMovimientoIA, 500); 
+            } else {
+                actualizarUI();
+                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') setTimeout(ejecutarMovimientoIA, 500); 
+            }
+        }
+
+        function finalizarJuego(ganador, motivo) {
+            estadoPartida = 'terminado';
+            playAudio(sndVictoria);
+            document.getElementById('texto-ganador').innerText = (ganador === 'Empate') ? 'Empate' : '¡Ganan las ' + (ganador === 'blanco' ? 'Blancas' : 'Negras') + '!';
+            document.getElementById('texto-motivo').innerText = motivo;
+            document.getElementById('ui-gameover').style.display = 'flex';
+        }
+
+        // --- 7. REGLAS MATEMÁTICAS ---
+        function obtenerPiezaEn(x, z) { return escena.children.find(obj => obj.userData && obj.userData.esPieza && obj.userData.gridX === x && obj.userData.gridZ === z) || null; }
+        
+        function caminoLibreSimple(oX, oZ, dX, dZ) {
+            const stepX = Math.sign(dX - oX); const stepZ = Math.sign(dZ - oZ);
+            let x = oX + stepX; let z = oZ + stepZ;
+            while (x !== dX || z !== dZ) {
+                if (obtenerPiezaEn(x, z)) return false;
+                x += stepX; z += stepZ;
+            }
+            return true;
+        }
+
+        function esMovimientoValido(pieza, destX, destZ, piezaDestino) {
+            const { gridX: origenX, gridZ: origenZ, tipo, color, haMovido } = pieza.userData;
+            const dx = destX - origenX; const dz = destZ - origenZ;
+            const absDx = Math.abs(dx); const absDz = Math.abs(dz);
+
+            if (piezaDestino && piezaDestino.userData.color === color && !(tipo === 'rey' && piezaDestino.userData.tipo === 'torre')) return false;
+            if (dx === 0 && dz === 0) return false;
+
+            if (tipo === 'peon') {
+                const dir = color === 'blanco' ? -1 : 1; const inicioZ = color === 'blanco' ? 6 : 1;
+                if (dx === 0 && !piezaDestino) {
+                    if (dz === dir) return true;
+                    if (origenZ === inicioZ && dz === 2 * dir && !obtenerPiezaEn(origenX, origenZ + dir) && !obtenerPiezaEn(destX, destZ)) return true;
+                }
+                if (absDx === 1 && dz === dir && piezaDestino) return true;
+                if (absDx === 1 && dz === dir && !piezaDestino && ultimoMovimiento) {
+                    if (ultimoMovimiento.pieza.userData.tipo === 'peon' && ultimoMovimiento.pieza.userData.color !== color) {
+                        if (Math.abs(ultimoMovimiento.origenZ - ultimoMovimiento.destZ) === 2 && ultimoMovimiento.destZ === origenZ && ultimoMovimiento.destX === destX) return true; 
+                    }
+                }
+                return false;
+            }
+            if (tipo === 'torre') return (dx === 0 || dz === 0) && caminoLibreSimple(origenX, origenZ, destX, destZ);
+            if (tipo === 'caballo') return (absDx === 2 && absDz === 1) || (absDx === 1 && absDz === 2);
+            if (tipo === 'alfil') return (absDx === absDz) && caminoLibreSimple(origenX, origenZ, destX, destZ);
+            if (tipo === 'reina') return (dx === 0 || dz === 0 || absDx === absDz) && caminoLibreSimple(origenX, origenZ, destX, destZ);
+            if (tipo === 'rey') {
+                if (absDx <= 1 && absDz <= 1 && (!piezaDestino || piezaDestino.userData.color !== color)) return true;
+                const esClicTorre = (piezaDestino && piezaDestino.userData.tipo === 'torre' && piezaDestino.userData.color === color);
+                const esClicVacio = (!piezaDestino && absDx === 2 && dz === 0);
+                if (!haMovido && (esClicVacio || esClicTorre)) {
+                    if (estaEnJaque(color)) return false; 
+                    const torreX = esClicTorre ? piezaDestino.userData.gridX : (dx > 0 ? 7 : 0); 
+                    const torre = obtenerPiezaEn(torreX, origenZ);
+                    if (!torre || torre.userData.tipo !== 'torre' || torre.userData.haMovido || torre.userData.color !== color) return false;
+                    if (!caminoLibreSimple(origenX, origenZ, torreX, origenZ)) return false;
+                    const dirEnroque = Math.sign(torreX - origenX);
+                    if (casillaBajoAtaque(origenX + dirEnroque, origenZ, color === 'blanco' ? 'negro' : 'blanco')) return false;
+                    if (casillaBajoAtaque(origenX + (dirEnroque * 2), origenZ, color === 'blanco' ? 'negro' : 'blanco')) return false;
+                    return true;
+                }
+                return false;
+            }
+            return false;
+        }
+
+        function casillaBajoAtaque(destX, destZ, colorAtacante) {
+            const victimaFalsa = { userData: { color: colorAtacante === 'blanco' ? 'negro' : 'blanco', tipo: 'peon' } };
+            for (let obj of escena.children) {
+                if (obj.userData?.esPieza && obj.userData.color === colorAtacante) {
+                    if (obj.userData.tipo === 'rey') {
+                        if (Math.abs(obj.userData.gridX - destX) <= 1 && Math.abs(obj.userData.gridZ - destZ) <= 1) return true;
+                        continue;
+                    }
+                    if (esMovimientoValido(obj, destX, destZ, victimaFalsa)) return true;
+                }
+            }
+            return false;
+        }
+
+        function estaEnJaque(color) {
+            const rey = escena.children.find(obj => obj.userData?.esPieza && obj.userData.color === color && obj.userData.tipo === 'rey');
+            if (!rey) return false;
+            return casillaBajoAtaque(rey.userData.gridX, rey.userData.gridZ, color === 'blanco' ? 'negro' : 'blanco');
+        }
+
+        function simulacionDejaEnJaque(pieza, destX, destZ, piezaDestino) {
+            const origenX = pieza.userData.gridX; const origenZ = pieza.userData.gridZ;
+            let destinoOriginalStatus = null; let peonAlPaso = null; let peonAlPasoOrig = null;
+
+            pieza.userData.gridX = destX; pieza.userData.gridZ = destZ;
+            
+            if (piezaDestino) { 
+                destinoOriginalStatus = piezaDestino.userData.esPieza; piezaDestino.userData.esPieza = false; 
+            } else if (pieza.userData.tipo === 'peon' && destX !== origenX) {
+                peonAlPaso = obtenerPiezaEn(destX, origenZ);
+                if (peonAlPaso) { peonAlPasoOrig = peonAlPaso.userData.esPieza; peonAlPaso.userData.esPieza = false; }
+            }
+
+            const enJaque = estaEnJaque(pieza.userData.color);
+            
+            pieza.userData.gridX = origenX; pieza.userData.gridZ = origenZ;
+            if (piezaDestino) piezaDestino.userData.esPieza = destinoOriginalStatus;
+            if (peonAlPaso) peonAlPaso.userData.esPieza = peonAlPasoOrig;
+
+            return enJaque;
+        }
+
+        function hayJaqueMate(color) {
+            if (!estaEnJaque(color)) return false; 
+            for (let obj of escena.children) {
+                if (obj.userData?.esPieza && obj.userData.color === color) {
+                    for (let x = 0; x < 8; x++) {
+                        for (let z = 0; z < 8; z++) {
+                            let destinoFalso = obtenerPiezaEn(x, z);
+                            if (obj.userData.tipo === 'rey' && destinoFalso && destinoFalso.userData.tipo === 'torre' && destinoFalso.userData.color === color) continue;
+                            if (esMovimientoValido(obj, x, z, destinoFalso) && !simulacionDejaEnJaque(obj, x, z, destinoFalso)) return false; 
+                        }
+                    }
+                }
+            }
+            return true; 
+        }
+
+        // --- 8. EJECUCIÓN CENTRAL DE MOVIMIENTOS ---
+        function ejecutarMovimiento(pieza, destX, destZ, piezaDestino, esCapturaAlPaso, esEnroque, torreEnroque, torreDestX) {
+            if (!partidaIniciada) { partidaIniciada = true; ultimoFrameReloj = Date.now(); }
+            
+            animando = true;
+            cambiarEmissive(pieza, pieza.userData.color==='negro' && iaActivada ? 0x990000 : 0x000000);
+            
+            let peonCapturado = esCapturaAlPaso ? obtenerPiezaEn(destX, pieza.userData.gridZ) : null;
+            let piezaARemover = esCapturaAlPaso ? peonCapturado : piezaDestino;
+            let huboCaptura = piezaARemover !== null;
+
+            if (piezaARemover) { piezaARemover.visible = false; playAudio(sndComer); } 
+            else { playAudio(sndMover); }
+
+            if (esEnroque && torreEnroque) {
+                animarMovimiento(torreEnroque, torreDestX, pieza.userData.gridZ, null);
+                torreEnroque.userData.gridX = torreDestX; torreEnroque.userData.haMovido = true;
+            }
+
+            const origenX = pieza.userData.gridX, origenZ = pieza.userData.gridZ;
+            ultimoMovimiento = { pieza: pieza, origenX: origenX, origenZ: origenZ, destX: destX, destZ: destZ };
+
+            animarMovimiento(pieza, destX, destZ, () => {
+                if (piezaARemover) escena.remove(piezaARemover);
+                
+                pieza.userData.gridX = destX; pieza.userData.gridZ = destZ;
+                pieza.userData.haMovido = true;
+                
+                cambiarEmissive(pieza, 0x000000); 
+
+                // Lógica de Promoción ajustada para red
+                if (pieza.userData.tipo === 'peon' && (destZ === 0 || destZ === 7)) {
+                    if (pieza.userData.color === 'negro' && iaActivada) {
+                        escena.remove(pieza);
+                        const nuevaReina = colocarPiezaModelada('reina', 'negro', destX, destZ);
+                        nuevaReina.userData.haMovido = true;
+                        registrarMovimiento(pieza, origenX, origenZ, destX, destZ, huboCaptura, false, 'reina');
+                        animando = false;
+                        cambiarTurno();
+                    } else if (conexionOnline && pieza.userData.color !== miColorOnline) {
+                        // Es el peón del amigo, esperamos a que mande el paquete de red
+                        peonPromocionando = pieza;
+                        peonPromocionando.datosPromo = { ox: origenX, oz: origenZ, dx: destX, dz: destZ, captura: huboCaptura };
+                    } else {
+                        peonPromocionando = pieza;
+                        peonPromocionando.datosPromo = { ox: origenX, oz: origenZ, dx: destX, dz: destZ, captura: huboCaptura };
+                        document.getElementById('ui-promocion').style.display = 'flex';
+                    }
+                } else {
+                    registrarMovimiento(pieza, origenX, origenZ, destX, destZ, huboCaptura, esEnroque);
+                    animando = false;
+                    cambiarTurno();
+                }
+            });
+        }
+
+        window.ejecutarPromocion = function(nuevoTipo, esRemoto = false) {
+            if (!peonPromocionando) return;
+            const color = peonPromocionando.userData.color;
+            const x = peonPromocionando.userData.gridX;
+            const z = peonPromocionando.userData.gridZ;
+            const datos = peonPromocionando.datosPromo;
+            
+            // Si juego online y no viene por red, envío mi decisión al amigo
+            if (conexionOnline && !esRemoto) {
+                conexionOnline.send({ tipo: 'promocion', nuevoTipo: nuevoTipo, ox: x, oz: z });
+            }
+
+            escena.remove(peonPromocionando);
+            const nuevaPieza = colocarPiezaModelada(nuevoTipo, color, x, z);
+            nuevaPieza.userData.haMovido = true;
+            
+            registrarMovimiento(nuevaPieza, datos.ox, datos.oz, datos.dx, datos.dz, datos.captura, false, nuevoTipo);
+
+            peonPromocionando = null;
+            document.getElementById('ui-promocion').style.display = 'none';
+            animando = false;
+            cambiarTurno();
+        };
+
+        // --- 9. INTELIGENCIA ARTIFICIAL ---
+        function ejecutarMovimientoIA() {
+            if (estadoPartida !== 'jugando' || turnoActual !== 'negro') return;
+            
+            let movimientosPosibles = [];
+            
+            for (let obj of escena.children) {
+                if (obj.userData?.esPieza && obj.userData.color === 'negro') {
+                    for (let x = 0; x < 8; x++) {
+                        for (let z = 0; z < 8; z++) {
+                            let piezaDestino = obtenerPiezaEn(x, z);
+                            let esCapturaAlPaso = false;
+                            
+                            if (obj.userData.tipo === 'peon' && x !== obj.userData.gridX && !piezaDestino) {
+                                if (esMovimientoValido(obj, x, z, null)) {
+                                    piezaDestino = obtenerPiezaEn(x, obj.userData.gridZ); 
+                                    esCapturaAlPaso = true;
+                                }
+                            }
+
+                            let esEnroque = false; let torreEnroque = null; let torreDestX = 0;
+                            if (obj.userData.tipo === 'rey' && Math.abs(x - obj.userData.gridX) === 2 && !piezaDestino) {
+                                esEnroque = true;
+                                const torreOrigenX = x > obj.userData.gridX ? 7 : 0;
+                                torreDestX = x > obj.userData.gridX ? x - 1 : x + 1;
+                                torreEnroque = obtenerPiezaEn(torreOrigenX, obj.userData.gridZ);
+                            }
+
+                            if (esMovimientoValido(obj, x, z, esCapturaAlPaso ? null : piezaDestino) && !simulacionDejaEnJaque(obj, x, z, esCapturaAlPaso ? null : piezaDestino)) {
+                                let puntuacion = 0;
+                                let valorCaptura = piezaDestino ? valorPiezas[piezaDestino.userData.tipo] : 0;
+                                let valorMiPieza = valorPiezas[obj.userData.tipo];
+
+                                if (dificultadIA === 'facil') {
+                                    puntuacion = Math.random();
+                                } else if (dificultadIA === 'medio') {
+                                    puntuacion = valorCaptura;
+                                    if (obj.userData.tipo === 'peon') puntuacion += (z * 0.1); 
+                                    puntuacion += Math.random() * 0.5; 
+                                } else if (dificultadIA === 'dificil') {
+                                    puntuacion = valorCaptura * 10;
+                                    if ((x === 3 || x === 4) && (z === 3 || z === 4)) puntuacion += 5;
+                                    
+                                    let origX = obj.userData.gridX, origZ = obj.userData.gridZ;
+                                    let destOrig = piezaDestino ? piezaDestino.userData.esPieza : null;
+                                    obj.userData.gridX = x; obj.userData.gridZ = z;
+                                    if (piezaDestino) piezaDestino.userData.esPieza = false;
+                                    
+                                    if (casillaBajoAtaque(x, z, 'blanco')) {
+                                        puntuacion -= valorMiPieza * 10; 
+                                        if (valorCaptura > valorMiPieza) puntuacion += (valorCaptura - valorMiPieza) * 10;
+                                    }
+                                    
+                                    obj.userData.gridX = origX; obj.userData.gridZ = origZ;
+                                    if (piezaDestino) piezaDestino.userData.esPieza = destOrig;
+                                    
+                                    if (obj.userData.tipo === 'peon') {
+                                        puntuacion += (z * 1);
+                                        if (z === 7) puntuacion += 900; 
+                                    }
+                                    if (esEnroque) puntuacion += 20;
+                                    puntuacion += Math.random(); 
+                                }
+                                movimientosPosibles.push({ pieza: obj, destX: x, destZ: z, piezaDestino: piezaDestino, esCapturaAlPaso, esEnroque, torreEnroque, torreDestX, puntuacion });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (movimientosPosibles.length > 0) {
+                movimientosPosibles.sort((a, b) => b.puntuacion - a.puntuacion);
+                const mov = movimientosPosibles[0]; 
+                ejecutarMovimiento(mov.pieza, mov.destX, mov.destZ, mov.piezaDestino, mov.esCapturaAlPaso, mov.esEnroque, mov.torreEnroque, mov.torreDestX);
+            } else {
+                finalizarJuego('Empate', "Rey ahogado (Sin movimientos)");
+            }
+        }
+
+        // --- 10. INTERACCIÓN DEL USUARIO ---
+        function cambiarEmissive(pieza, colorHex) {
+            pieza.traverse((hijo) => { if (hijo.isMesh) hijo.material.emissive.setHex(colorHex); });
+        }
+
+        function obtenerPiezaRaiz(objeto) {
+            let actual = objeto;
+            while (actual) { if (actual.userData?.esPieza) return actual; actual = actual.parent; }
+            return null;
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const raton = new THREE.Vector2();
+
+        renderizador.domElement.addEventListener('pointerdown', (evento) => {
+            if (estadoPartida !== 'jugando' || animando || peonPromocionando) return; 
+            if (iaActivada && turnoActual === 'negro') return;
+            // ¡NUEVA REGLA! Si juego online, no puedo mover las piezas de mi rival
+            if (conexionOnline && turnoActual !== miColorOnline) return;
+
+            const rect = renderizador.domElement.getBoundingClientRect();
+            raton.x = ((evento.clientX - rect.left) / rect.width) * 2 - 1;
+            raton.y = -((evento.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(raton, camara);
+            const intersecciones = raycaster.intersectObjects(escena.children, true);
+
+            const hit = intersecciones.find(i => i.object.visible);
+            if (!hit) return;
+
+            const objetoClickeado = hit.object;
+            const piezaClickeada = obtenerPiezaRaiz(objetoClickeado);
+            let destX, destZ, piezaDestino = null;
+
+            if (objetoClickeado.userData?.esCasilla) {
+                destX = objetoClickeado.userData.gridX; destZ = objetoClickeado.userData.gridZ;
+                piezaDestino = obtenerPiezaEn(destX, destZ); 
+            } else if (piezaClickeada) {
+                destX = piezaClickeada.userData.gridX; destZ = piezaClickeada.userData.gridZ;
+                piezaDestino = piezaClickeada;
+            } else return; 
+
+            if (piezaSeleccionada) {
+                if (piezaDestino && piezaDestino.userData.color === turnoActual) {
+                    const esIntentoEnroque = (piezaSeleccionada.userData.tipo === 'rey' && piezaDestino.userData.tipo === 'torre' && !piezaSeleccionada.userData.haMovido && !piezaDestino.userData.haMovido);
+                    if (!esIntentoEnroque) {
+                        cambiarEmissive(piezaSeleccionada, 0x000000); piezaSeleccionada = piezaDestino; cambiarEmissive(piezaSeleccionada, 0x444400); playAudio(sndSeleccion); return;
+                    }
+                }
+
+                let esCapturaAlPaso = false; let esEnroque = false; let torreEnroque = null; let torreDestX = 0;
+
+                if (piezaSeleccionada.userData.tipo === 'peon' && piezaDestino && piezaDestino.userData.tipo === 'peon' && piezaDestino.userData.color !== turnoActual && destZ === piezaSeleccionada.userData.gridZ) {
+                    const dir = turnoActual === 'blanco' ? -1 : 1;
+                    if (esMovimientoValido(piezaSeleccionada, destX, piezaSeleccionada.userData.gridZ + dir, null)) {
+                        destZ = piezaSeleccionada.userData.gridZ + dir; piezaDestino = null; esCapturaAlPaso = true;
+                    }
+                } else if (piezaSeleccionada.userData.tipo === 'peon' && destX !== piezaSeleccionada.userData.gridX && !piezaDestino) {
+                    if (esMovimientoValido(piezaSeleccionada, destX, destZ, null)) esCapturaAlPaso = true;
+                }
+
+                if (piezaSeleccionada.userData.tipo === 'rey' && piezaDestino && piezaDestino.userData.tipo === 'torre' && piezaDestino.userData.color === turnoActual) {
+                    if (esMovimientoValido(piezaSeleccionada, destX, destZ, piezaDestino)) {
+                        esEnroque = true; torreEnroque = piezaDestino;
+                        const dirTorre = Math.sign(torreEnroque.userData.gridX - piezaSeleccionada.userData.gridX);
+                        destX = piezaSeleccionada.userData.gridX + (dirTorre * 2); destZ = piezaSeleccionada.userData.gridZ;
+                        torreDestX = destX - dirTorre; piezaDestino = null; 
+                    }
+                } else if (piezaSeleccionada.userData.tipo === 'rey' && Math.abs(destX - piezaSeleccionada.userData.gridX) === 2 && !piezaDestino) {
+                    if (esMovimientoValido(piezaSeleccionada, destX, destZ, null)) {
+                        esEnroque = true;
+                        torreEnroque = obtenerPiezaEn(destX > piezaSeleccionada.userData.gridX ? 7 : 0, piezaSeleccionada.userData.gridZ);
+                        torreDestX = destX > piezaSeleccionada.userData.gridX ? destX - 1 : destX + 1;
+                    }
+                }
+
+                if (esMovimientoValido(piezaSeleccionada, destX, destZ, esCapturaAlPaso ? null : piezaDestino)) {
+                    if (simulacionDejaEnJaque(piezaSeleccionada, destX, destZ, esCapturaAlPaso ? null : piezaDestino)) {
+                        const uiJaque = document.getElementById('ui-jaque'); uiJaque.style.opacity = '1';
+                        setTimeout(() => { if (!estaEnJaque(turnoActual)) uiJaque.style.opacity = '0'; }, 1000);
+                        cambiarEmissive(piezaSeleccionada, 0x000000); piezaSeleccionada = null; return; 
+                    }
+                    
+                    // ¡Enviamos nuestro movimiento por red justo antes de ejecutarlo!
+                    if (conexionOnline) {
+                        conexionOnline.send({
+                            tipo: 'movimiento',
+                            ox: piezaSeleccionada.userData.gridX, oz: piezaSeleccionada.userData.gridZ,
+                            dx: destX, dz: destZ,
+                            esCapturaAlPaso: esCapturaAlPaso, esEnroque: esEnroque, torreDestX: torreDestX
+                        });
+                    }
+
+                    ejecutarMovimiento(piezaSeleccionada, destX, destZ, piezaDestino, esCapturaAlPaso, esEnroque, torreEnroque, torreDestX);
+                    piezaSeleccionada = null;
+                } else { cambiarEmissive(piezaSeleccionada, 0x000000); piezaSeleccionada = null; }
+            } else {
+                if (piezaDestino && piezaDestino.userData.color === turnoActual) {
+                    piezaSeleccionada = piezaDestino; cambiarEmissive(piezaSeleccionada, 0x444400); playAudio(sndSeleccion);
+                }
+            }
+        });
+
+        // --- 11. BUCLE DE RENDERIZADO ---
+        const animaciones = [];
+        function animarMovimiento(pieza, destX, destZ, callback) {
+            const origen = pieza.position.clone();
+            const destino = new THREE.Vector3(destX - 3.5, 0.11, destZ - 3.5);
+            animaciones.push({ pieza, origen, destino, progreso: 0, velocidad: 0.12, callback });
+        }
+
+        function actualizarTextosReloj() {
+            function formato(segs) {
+                let m = Math.floor(segs / 60);
+                let s = Math.floor(segs % 60);
+                return `${m}:${s < 10 ? '0' : ''}${s}`;
+            }
+            document.getElementById('reloj-blanco').innerText = formato(tiempoBlanco);
+            document.getElementById('reloj-negro').innerText = formato(tiempoNegro);
+        }
+
+        window.addEventListener('resize', () => {
+            camara.aspect = window.innerWidth / window.innerHeight;
+            camara.updateProjectionMatrix(); renderizador.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animar() {
+            requestAnimationFrame(animar);
+            controles.update();
+            
+            const ahora = Date.now();
+            if (estadoPartida === 'jugando' && partidaIniciada && !peonPromocionando) {
+                const deltaSegundos = (ahora - ultimoFrameReloj) / 1000;
+                if (turnoActual === 'blanco') {
+                    tiempoBlanco -= deltaSegundos;
+                    if (tiempoBlanco <= 0) finalizarJuego('negro', "Tiempo Agotado");
+                } else {
+                    tiempoNegro -= deltaSegundos;
+                    if (tiempoNegro <= 0) finalizarJuego('blanco', "Tiempo Agotado");
+                }
+                actualizarTextosReloj();
+            }
+            ultimoFrameReloj = ahora;
+
+            for (let i = animaciones.length - 1; i >= 0; i--) {
+                let anim = animaciones[i]; anim.progreso += anim.velocidad;
+                if (anim.progreso >= 1) {
+                    anim.pieza.position.copy(anim.destino);
+                    if (anim.callback) anim.callback(); animaciones.splice(i, 1);
+                } else {
+                    const smoothProgress = 1 - Math.pow(1 - anim.progreso, 3);
+                    anim.pieza.position.lerpVectors(anim.origen, anim.destino, smoothProgress);
+                }
+            }
+            renderizador.render(escena, camara);
+        }
+        animar();
+    </script>
+</body>
+</html>
