@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Tentechess - Edición Premium (Multijugador Online)</title>
+    <title>Ajedrez 3D - Edición Premium (Multijugador Online)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
         canvas { display: block; width: 100vw; height: 100vh; outline: none; }
@@ -65,7 +65,7 @@
     </div>
 
     <div id="ui-menu" style="display: none;">
-        <h1>Tentechess</h1>
+        <h1>Ajedrez 3D</h1>
         <p>Configura tu partida</p>
         <div class="menu-opcion">
             <select id="select-modo" onchange="actualizarMenu()">
@@ -104,6 +104,7 @@
     
     <div id="controles-top">
         <button id="btn-sonido" class="btn-control" onclick="toggleSonido()">🔇 Sonido</button>
+        <button id="btn-fullscreen" class="btn-control" onclick="togglePantallaCompleta()">⛶ Pantalla Completa</button>
         <button id="btn-ajustes" class="btn-control" onclick="toggleAjustes()">⚙️</button>
     </div>
 
@@ -151,7 +152,7 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
     <script>
-        // --- 0. SISTEMAS DE AUDIO ---
+        // --- 0. SISTEMAS DE AUDIO Y PANTALLA COMPLETA ---
         const sndSeleccion = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Move.ogg'); sndSeleccion.volume = 0.4; 
         const sndMover = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Move.ogg');
         const sndComer = new Audio('https://cdn.jsdelivr.net/gh/lichess-org/lila@master/public/sound/standard/Capture.ogg');
@@ -169,6 +170,27 @@
                 btn.innerHTML = '🔇 Sonido'; btn.style.borderColor = '#aaa';
             }
         }
+
+        window.togglePantallaCompleta = function() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch((err) => {
+                    console.warn(`Error al intentar iniciar el modo pantalla completa: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        };
+
+        document.addEventListener('fullscreenchange', () => {
+            const btn = document.getElementById('btn-fullscreen');
+            if (document.fullscreenElement) {
+                btn.innerHTML = '✖ Salir Pantalla Completa';
+                btn.style.borderColor = '#00ff00';
+            } else {
+                btn.innerHTML = '⛶ Pantalla Completa';
+                btn.style.borderColor = '#aaa';
+            }
+        });
 
         function playAudio(audioObj) {
             if (sonidoActivado) {
@@ -194,7 +216,6 @@
         let historialJugadas = [];
         let numTurnoGlobal = 1;
 
-        // --- VARIABLES MULTIJUGADOR ONLINE ---
         let peer = null;
         let conexionOnline = null;
         let miColorOnline = 'blanco';
@@ -338,7 +359,6 @@
             document.getElementById('btn-jugar-local').style.display = modo === 'online' ? 'none' : 'block';
         }
 
-        // --- LÓGICA DE CONEXIÓN ONLINE (PEERJS) ---
         window.crearSalaOnline = function() {
             document.getElementById('estado-conexion').innerText = "Conectando al servidor...";
             const idSala = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -524,10 +544,10 @@
                 finalizarJuego(turnoActual === 'blanco' ? 'negro' : 'blanco', "Por Jaque Mate");
             } else if (estaEnJaque(turnoActual)) {
                 anadirJaqueAlHistorial(false); actualizarUI();
-                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') setTimeout(ejecutarMovimientoIA, 500); 
+                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') ejecutarMovimientoIA(); 
             } else {
                 actualizarUI();
-                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') setTimeout(ejecutarMovimientoIA, 500); 
+                if (turnoActual === 'negro' && iaActivada && estadoPartida === 'jugando') ejecutarMovimientoIA(); 
             }
         }
 
@@ -696,7 +716,6 @@
                         animando = false;
                         cambiarTurno();
                     } else if (conexionOnline && pieza.userData.color !== miColorOnline) {
-                        // Es el peón del amigo, esperamos a que mande el paquete de red
                         peonPromocionando = pieza;
                         peonPromocionando.datosPromo = { ox: origenX, oz: origenZ, dx: destX, dz: destZ, captura: huboCaptura };
                     } else {
@@ -719,7 +738,6 @@
             const z = peonPromocionando.userData.gridZ;
             const datos = peonPromocionando.datosPromo;
             
-            // Si juego online y no viene por red, envío mi decisión al amigo
             if (conexionOnline && !esRemoto) {
                 conexionOnline.send({ tipo: 'promocion', nuevoTipo: nuevoTipo, ox: x, oz: z });
             }
@@ -736,14 +754,100 @@
             cambiarTurno();
         };
 
-        // --- 9. INTELIGENCIA ARTIFICIAL ---
-        function ejecutarMovimientoIA() {
-            if (estadoPartida !== 'jugando' || turnoActual !== 'negro') return;
-            
-            let movimientosPosibles = [];
-            
+        // --- 9. INTELIGENCIA ARTIFICIAL (MOTOR MINIMAX MEJORADO) ---
+        const pst = {
+            'peon': [
+                [ 0,  0,  0,  0,  0,  0,  0,  0],
+                [50, 50, 50, 50, 50, 50, 50, 50],
+                [10, 10, 20, 30, 30, 20, 10, 10],
+                [ 5,  5, 10, 25, 25, 10,  5,  5],
+                [ 0,  0,  0, 20, 20,  0,  0,  0],
+                [ 5, -5,-10,  0,  0,-10, -5,  5],
+                [ 5, 10, 10,-20,-20, 10, 10,  5],
+                [ 0,  0,  0,  0,  0,  0,  0,  0]
+            ],
+            'caballo': [
+                [-50,-40,-30,-30,-30,-30,-40,-50],
+                [-40,-20,  0,  0,  0,  0,-20,-40],
+                [-30,  0, 10, 15, 15, 10,  0,-30],
+                [-30,  5, 15, 20, 20, 15,  5,-30],
+                [-30,  0, 15, 20, 20, 15,  0,-30],
+                [-30,  5, 10, 15, 15, 10,  5,-30],
+                [-40,-20,  0,  5,  5,  0,-20,-40],
+                [-50,-40,-30,-30,-30,-30,-40,-50]
+            ],
+            'alfil': [
+                [-20,-10,-10,-10,-10,-10,-10,-20],
+                [-10,  0,  0,  0,  0,  0,  0,-10],
+                [-10,  0,  5, 10, 10,  5,  0,-10],
+                [-10,  5,  5, 10, 10,  5,  5,-10],
+                [-10,  0, 10, 10, 10, 10,  0,-10],
+                [-10, 10, 10, 10, 10, 10, 10,-10],
+                [-10,  5,  0,  0,  0,  0,  5,-10],
+                [-20,-10,-10,-10,-10,-10,-10,-20]
+            ],
+            'torre': [
+                [  0,  0,  0,  0,  0,  0,  0,  0],
+                [  5, 10, 10, 10, 10, 10, 10,  5],
+                [ -5,  0,  0,  0,  0,  0,  0, -5],
+                [ -5,  0,  0,  0,  0,  0,  0, -5],
+                [ -5,  0,  0,  0,  0,  0,  0, -5],
+                [ -5,  0,  0,  0,  0,  0,  0, -5],
+                [ -5,  0,  0,  0,  0,  0,  0, -5],
+                [  0,  0,  0,  5,  5,  0,  0,  0]
+            ],
+            'reina': [
+                [-20,-10,-10, -5, -5,-10,-10,-20],
+                [-10,  0,  0,  0,  0,  0,  0,-10],
+                [-10,  0,  5,  5,  5,  5,  0,-10],
+                [ -5,  0,  5,  5,  5,  5,  0, -5],
+                [  0,  0,  5,  5,  5,  5,  0, -5],
+                [-10,  5,  5,  5,  5,  5,  0,-10],
+                [-10,  0,  5,  0,  0,  0,  0,-10],
+                [-20,-10,-10, -5, -5,-10,-10,-20]
+            ],
+            'rey': [
+                [-30,-40,-40,-50,-50,-40,-40,-30],
+                [-30,-40,-40,-50,-50,-40,-40,-30],
+                [-30,-40,-40,-50,-50,-40,-40,-30],
+                [-30,-40,-40,-50,-50,-40,-40,-30],
+                [-20,-30,-30,-40,-40,-30,-30,-20],
+                [-10,-20,-20,-20,-20,-20,-20,-10],
+                [ 20, 20,  0,  0,  0,  0, 20, 20],
+                [ 20, 30, 10,  0,  0, 10, 30, 20]
+            ]
+        };
+
+        const valorPiezasIA = { 'peon': 100, 'caballo': 320, 'alfil': 330, 'torre': 500, 'reina': 900, 'rey': 20000 };
+
+        function evaluarTablero() {
+            let puntuacion = 0;
             for (let obj of escena.children) {
-                if (obj.userData?.esPieza && obj.userData.color === 'negro') {
+                if (obj.userData?.esPieza && obj.userData.esPieza !== false) {
+                    let tipo = obj.userData.tipo;
+                    let color = obj.userData.color;
+                    let x = obj.userData.gridX;
+                    let z = obj.userData.gridZ;
+                    
+                    let valor = valorPiezasIA[tipo];
+                    
+                    let pstZ = color === 'blanco' ? z : 7 - z;
+                    valor += pst[tipo][pstZ][x];
+
+                    if (color === 'negro') {
+                        puntuacion += valor; 
+                    } else {
+                        puntuacion -= valor;
+                    }
+                }
+            }
+            return puntuacion;
+        }
+
+        function generarTodosLosMovimientos(color) {
+            let movimientos = [];
+            for (let obj of escena.children) {
+                if (obj.userData?.esPieza && obj.userData.color === color && obj.userData.esPieza !== false) {
                     for (let x = 0; x < 8; x++) {
                         for (let z = 0; z < 8; z++) {
                             let piezaDestino = obtenerPiezaEn(x, z);
@@ -765,54 +869,146 @@
                             }
 
                             if (esMovimientoValido(obj, x, z, esCapturaAlPaso ? null : piezaDestino) && !simulacionDejaEnJaque(obj, x, z, esCapturaAlPaso ? null : piezaDestino)) {
-                                let puntuacion = 0;
-                                let valorCaptura = piezaDestino ? valorPiezas[piezaDestino.userData.tipo] : 0;
-                                let valorMiPieza = valorPiezas[obj.userData.tipo];
-
-                                if (dificultadIA === 'facil') {
-                                    puntuacion = Math.random();
-                                } else if (dificultadIA === 'medio') {
-                                    puntuacion = valorCaptura;
-                                    if (obj.userData.tipo === 'peon') puntuacion += (z * 0.1); 
-                                    puntuacion += Math.random() * 0.5; 
-                                } else if (dificultadIA === 'dificil') {
-                                    puntuacion = valorCaptura * 10;
-                                    if ((x === 3 || x === 4) && (z === 3 || z === 4)) puntuacion += 5;
-                                    
-                                    let origX = obj.userData.gridX, origZ = obj.userData.gridZ;
-                                    let destOrig = piezaDestino ? piezaDestino.userData.esPieza : null;
-                                    obj.userData.gridX = x; obj.userData.gridZ = z;
-                                    if (piezaDestino) piezaDestino.userData.esPieza = false;
-                                    
-                                    if (casillaBajoAtaque(x, z, 'blanco')) {
-                                        puntuacion -= valorMiPieza * 10; 
-                                        if (valorCaptura > valorMiPieza) puntuacion += (valorCaptura - valorMiPieza) * 10;
-                                    }
-                                    
-                                    obj.userData.gridX = origX; obj.userData.gridZ = origZ;
-                                    if (piezaDestino) piezaDestino.userData.esPieza = destOrig;
-                                    
-                                    if (obj.userData.tipo === 'peon') {
-                                        puntuacion += (z * 1);
-                                        if (z === 7) puntuacion += 900; 
-                                    }
-                                    if (esEnroque) puntuacion += 20;
-                                    puntuacion += Math.random(); 
-                                }
-                                movimientosPosibles.push({ pieza: obj, destX: x, destZ: z, piezaDestino: piezaDestino, esCapturaAlPaso, esEnroque, torreEnroque, torreDestX, puntuacion });
+                                movimientos.push({
+                                    pieza: obj, destX: x, destZ: z, 
+                                    piezaDestino: piezaDestino, esCapturaAlPaso: esCapturaAlPaso, 
+                                    esEnroque: esEnroque, torreEnroque: torreEnroque, torreDestX: torreDestX
+                                });
                             }
                         }
                     }
                 }
             }
-            
-            if (movimientosPosibles.length > 0) {
-                movimientosPosibles.sort((a, b) => b.puntuacion - a.puntuacion);
-                const mov = movimientosPosibles[0]; 
-                ejecutarMovimiento(mov.pieza, mov.destX, mov.destZ, mov.piezaDestino, mov.esCapturaAlPaso, mov.esEnroque, mov.torreEnroque, mov.torreDestX);
-            } else {
-                finalizarJuego('Empate', "Rey ahogado (Sin movimientos)");
+            return movimientos;
+        }
+
+        function aplicarMovimientoTemporal(mov) {
+            mov.estadoPrevio = {
+                ox: mov.pieza.userData.gridX,
+                oz: mov.pieza.userData.gridZ,
+                destPiezaStatus: mov.piezaDestino ? mov.piezaDestino.userData.esPieza : null,
+                haMovido: mov.pieza.userData.haMovido
+            };
+
+            mov.pieza.userData.gridX = mov.destX;
+            mov.pieza.userData.gridZ = mov.destZ;
+            mov.pieza.userData.haMovido = true;
+
+            if (mov.piezaDestino) {
+                mov.piezaDestino.userData.esPieza = false; 
             }
+        }
+
+        function revertirMovimientoTemporal(mov) {
+            mov.pieza.userData.gridX = mov.estadoPrevio.ox;
+            mov.pieza.userData.gridZ = mov.estadoPrevio.oz;
+            mov.pieza.userData.haMovido = mov.estadoPrevio.haMovido;
+
+            if (mov.piezaDestino) {
+                mov.piezaDestino.userData.esPieza = mov.estadoPrevio.destPiezaStatus;
+            }
+        }
+
+        function minimax(profundidad, alpha, beta, esMaximizando) {
+            if (profundidad === 0) return evaluarTablero();
+            
+            const colorActual = esMaximizando ? 'negro' : 'blanco';
+            let movimientos = generarTodosLosMovimientos(colorActual);
+            
+            if (movimientos.length === 0) {
+                if (estaEnJaque(colorActual)) return esMaximizando ? -99999 : 99999;
+                return 0; 
+            }
+
+            movimientos.sort((a, b) => {
+                let valA = a.piezaDestino ? valorPiezasIA[a.piezaDestino.userData.tipo] : 0;
+                let valB = b.piezaDestino ? valorPiezasIA[b.piezaDestino.userData.tipo] : 0;
+                return valB - valA;
+            });
+
+            if (esMaximizando) {
+                let maxEval = -Infinity;
+                for (let mov of movimientos) {
+                    aplicarMovimientoTemporal(mov);
+                    let evaluacion = minimax(profundidad - 1, alpha, beta, false);
+                    revertirMovimientoTemporal(mov);
+                    maxEval = Math.max(maxEval, evaluacion);
+                    alpha = Math.max(alpha, evaluacion);
+                    if (beta <= alpha) break; 
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (let mov of movimientos) {
+                    aplicarMovimientoTemporal(mov);
+                    let evaluacion = minimax(profundidad - 1, alpha, beta, true);
+                    revertirMovimientoTemporal(mov);
+                    minEval = Math.min(minEval, evaluacion);
+                    beta = Math.min(beta, evaluacion);
+                    if (beta <= alpha) break; 
+                }
+                return minEval;
+            }
+        }
+
+        function ejecutarMovimientoIA() {
+            if (estadoPartida !== 'jugando' || turnoActual !== 'negro') return;
+            
+            const uiTurno = document.getElementById('ui-turno');
+            const textoOriginal = uiTurno.innerHTML;
+            uiTurno.innerHTML = 'Pensando... 🤔';
+            uiTurno.style.borderColor = '#ffaa00';
+
+            setTimeout(() => {
+                let profundidad = 1;
+                if (dificultadIA === 'medio') profundidad = 2;
+                if (dificultadIA === 'dificil') profundidad = 3; 
+                
+                let movimientos = generarTodosLosMovimientos('negro');
+                if (movimientos.length === 0) {
+                    finalizarJuego('Empate', "Rey ahogado (Sin movimientos)");
+                    return;
+                }
+
+                for (let i = movimientos.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [movimientos[i], movimientos[j]] = [movimientos[j], movimientos[i]];
+                }
+
+                movimientos.sort((a, b) => {
+                    let valA = a.piezaDestino ? valorPiezasIA[a.piezaDestino.userData.tipo] : 0;
+                    let valB = b.piezaDestino ? valorPiezasIA[b.piezaDestino.userData.tipo] : 0;
+                    return valB - valA;
+                });
+
+                let mejorMovimiento = null;
+                let mejorValor = -Infinity;
+                let alpha = -Infinity;
+                let beta = Infinity;
+
+                for (let mov of movimientos) {
+                    aplicarMovimientoTemporal(mov);
+                    let valorTablero = minimax(profundidad - 1, alpha, beta, false);
+                    revertirMovimientoTemporal(mov);
+                    
+                    if (dificultadIA === 'facil') {
+                        valorTablero += (Math.random() * 60 - 30);
+                    }
+
+                    if (valorTablero > mejorValor) {
+                        mejorValor = valorTablero;
+                        mejorMovimiento = mov;
+                    }
+                    alpha = Math.max(alpha, valorTablero);
+                }
+
+                uiTurno.innerHTML = textoOriginal;
+                uiTurno.style.borderColor = '#444444'; 
+                
+                if (mejorMovimiento) {
+                    ejecutarMovimiento(mejorMovimiento.pieza, mejorMovimiento.destX, mejorMovimiento.destZ, mejorMovimiento.piezaDestino, mejorMovimiento.esCapturaAlPaso, mejorMovimiento.esEnroque, mejorMovimiento.torreEnroque, mejorMovimiento.torreDestX);
+                }
+            }, 50); 
         }
 
         // --- 10. INTERACCIÓN DEL USUARIO ---
@@ -832,7 +1028,6 @@
         renderizador.domElement.addEventListener('pointerdown', (evento) => {
             if (estadoPartida !== 'jugando' || animando || peonPromocionando) return; 
             if (iaActivada && turnoActual === 'negro') return;
-            // ¡NUEVA REGLA! Si juego online, no puedo mover las piezas de mi rival
             if (conexionOnline && turnoActual !== miColorOnline) return;
 
             const rect = renderizador.domElement.getBoundingClientRect();
@@ -898,7 +1093,6 @@
                         cambiarEmissive(piezaSeleccionada, 0x000000); piezaSeleccionada = null; return; 
                     }
                     
-                    // ¡Enviamos nuestro movimiento por red justo antes de ejecutarlo!
                     if (conexionOnline) {
                         conexionOnline.send({
                             tipo: 'movimiento',
